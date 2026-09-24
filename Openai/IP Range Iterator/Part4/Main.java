@@ -4,18 +4,16 @@ public class Main {
     public static void main(String[] args) {
         Solution solution = new Solution();
         var res = solution.solution("192.168.1.0/30", 2);
-        System.out.println(res); // 
-
-        
+        System.out.println(res); // { 4, 192.168.1.0, 192.168.1.3, [ 192.168.1.0, 192.168.1.1 ], [ 192.168.1.2, 192.168.1.3 ] }
 
         res = solution.solution("10.0.0.5/32", 3);
-        System.out.println(res); // 
+        System.out.println(res); // { 1, 10.0.0.5, 10.0.0.5, [ 10.0.0.5 ], [ 10.0.0.5 ] }
 
         res = solution.solution("0.0.0.0/0", 1);
-        System.out.println(res); // 
+        System.out.println(res); // { 4294967296, 0.0.0.0, 255.255.255.255, [ 0.0.0.0 ], [ 255.255.255.255 ] }
 
         res = solution.solution("1.2.3.4/24", 0);
-        System.out.println(res); // 
+        System.out.println(res); // { 256, 1.2.3.0, 1.2.3.255, [  ], [  ] }
     }
 }
 
