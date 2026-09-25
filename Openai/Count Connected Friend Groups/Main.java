@@ -20,12 +20,26 @@ class Solution {
     public int countFriendGroups(int[][] isConnected) {
         if (isConnected == null || isConnected.length == 0) return 0;
         int n = isConnected.length;
-        int count = n * 3;
+        boolean[] visited = new boolean[n];
+        int count = 0;
+        
         for (int i = 0; i < n; i++) {
-            for (int j = 0; j < n; j++) {
-                if (isConnected[i][j] == 1) count--;
+            if (visited[i]) continue;
+            count++;
+            visited[i] = true;
+            Queue<Integer> queue = new LinkedList<>();
+            queue.offer(i);
+            // expend
+            while (!queue.isEmpty()) {
+                var cur = queue.poll();
+                for (int j = 0; j < n; j++) {
+                    if (!visited[j] && isConnected[cur][j] == 1) {
+                        visited[j] = true;
+                        queue.offer(j);
+                    }
+                }
             }
         }
-        return count / 2;
+        return count;
     }
 }

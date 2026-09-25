@@ -14,3 +14,4 @@ Prochub:
 
 ### hard
 - [Consistent Hashing Ring with Virtual Nodes for Shard Rebalancing](https://prachub.com/coding-questions/consistent-hashing-ring-with-virtual-nodes-for-shard-rebalancing)
+- [Leftmost-Fit Memory Allocator: Allocate Consecutive Units and Free by Owner](https://prachub.com/interview-questions/leftmost-fit-memory-allocator-allocate-consecutive-units-and-free-by-owner)
