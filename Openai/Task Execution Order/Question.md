@@ -31,7 +31,7 @@ Input (0, [])
 
 Output []
 
-Notes Minimum valid input: zero tasks produce an empty order.
+Notes: Minimum valid input: zero tasks produce an empty order.
 ```
 
 **Example 2**
