@@ -108,16 +108,16 @@ class Solution {
             byte[] chunk = new byte[maxSize];
             byte[] head = encodeNum(i);
             System.arraycopy(head, 0, chunk, 0, 4);
-            System.arraycopy(chunk, 4, allBytes, start, segSize);
+            System.arraycopy(allBytes, start, chunk, 4, segSize);
             segments[i] = chunk;
             start += segSize;
         }
         // handle last chunk
         int lastChunkSize = allBytes.length - start;
-        byte[] chunk = new byte[lastChunkSize];
+        byte[] chunk = new byte[lastChunkSize + 4];
         byte[] head = encodeNum(count - 1);
         System.arraycopy(head, 0, chunk, 0, 4);
-        System.arraycopy(chunk, 4, allBytes, start, lastChunkSize);
+        System.arraycopy(allBytes, start, chunk, 4, lastChunkSize);
         segments[count - 1] = chunk;
         return segments;
     }
