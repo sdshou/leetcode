@@ -48,10 +48,12 @@ class Solution {
                 case "delete": store.remove(new DataItem(operation[1])); break;
                 case "serialize": {
                     disk.put(((String)operation[1]), serialize());
+                    break;
                 }
                 case "deserialize": {
                     byte[] storeBytes = disk.get(((String)(operation[1])));
                     this.store = deserialize(storeBytes);
+                    break;
                 }
             }
         }

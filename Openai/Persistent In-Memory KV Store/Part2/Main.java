@@ -4,23 +4,37 @@ import java.util.*;
 public class Main {
     public static void main(String[] args) {
         Solution solution = new Solution();
-        String[][] operations = new String[][]{
-            {"put", "a", "1"}, {"get", "a"}, {"serialize", "snap1"}, 
-            {"put", "a", "2"}, {"deserialize", "snap1"}, {"get", "a"}
+        byte[] key1 = "a".getBytes(StandardCharsets.UTF_8);
+        byte[] key2 = "b".getBytes(StandardCharsets.UTF_8);
+        Object[][] operations = new Object[][]{
+            {"put", key1, "12345".getBytes(StandardCharsets.UTF_8)}, 
+            {"put", key2, "67890".getBytes(StandardCharsets.UTF_8)}, 
+            {"serialize", "p"}, {"segment_count", "p"}, {"delete", key1}, 
+            {"deserialize", "p"}, {"get", key1}, {"get", key2}
         };
-        var res = solution.solution(operations);
-        System.out.println(res); // [1, 1]
-
-        byte[] key = "a|b".getBytes(StandardCharsets.UTF_8);
-        byte[] val = "v:1".getBytes(StandardCharsets.UTF_8);
-        var operations2 = new Object[][]{
-            {"put", key, val}, {"serialize", "p"}, {"delete", key},
-            {"get", key}, {"deserialize", "p"}, {"get", key}
-        };
-        res = solution.solution(operations2);
+        var res = solution.solution(15, operations);
         if (res instanceof List<?> r) {
             byte[] v1 = (byte[]) r.get(1);
-            var str = String.format("[%s, %s]", r.get(0), new String(v1, StandardCharsets.UTF_8));
+            byte[] v2 = (byte[]) r.get(1);
+            var str = String.format("[%d, %s, %s]", r.get(0), new String(v1, StandardCharsets.UTF_8), new String(v2, StandardCharsets.UTF_8));
+            System.out.println(str);
+        }
+
+        key1 = "aa".getBytes(StandardCharsets.UTF_8);
+        key2 = "bb".getBytes(StandardCharsets.UTF_8);
+        byte[] val1 = "xx".getBytes(StandardCharsets.UTF_8);
+        byte[] val2 = "yy".getBytes(StandardCharsets.UTF_8);
+        var operations2 = new Object[][]{
+            {"put", key1, val1}, {"put", key2, val2}, {"serialize", "snap"}, 
+            {"segment_count", "snap"}, {"reorder", "snap", new int[]{2, 0, 1}}, 
+            {"delete", key2}, {"deserialize", "snap"}, 
+            {"get", key1}, {"get", key2}
+        };
+        res = solution.solution(20, operations2);
+        if (res instanceof List<?> r) {
+            byte[] v1 = (byte[]) r.get(1);
+            byte[] v2 = (byte[]) r.get(1);
+            var str = String.format("[%d, %s, %s]", r.get(0), new String(v1, StandardCharsets.UTF_8), new String(v2, StandardCharsets.UTF_8));
             System.out.println(str);
         } // [None, v:1]
     }
@@ -30,8 +44,9 @@ class Solution {
     private Map<DataItem, DataItem> store = new HashMap<>();
     private Map<String, byte[][]> disk = new HashMap<>();
     public Object solution(Object max_segment_size, Object operations) {
+        int maxSize = (int)max_segment_size;
         var outputs = new LinkedList<Object>();
-        if (!operations instanceof Object[]) return outputs;
+        if (!(operations instanceof Object[])) return outputs;
 
         for (Object op : (Object[])operations) {
             if (!(op instanceof Object[])) continue;
@@ -49,15 +64,38 @@ class Solution {
                 case "put": store.put(new DataItem(operation[1]), new DataItem(operation[2])); break;
                 case "delete": store.remove(new DataItem(operation[1])); break;
                 case "serialize": {
-                    disk.put(((String)operation[1]), serialize());
+                    disk.put(((String)operation[1]), serializeWithSegment(maxSize));
+                    break;
                 }
                 case "deserialize": {
-                    byte[] storeBytes = disk.get(((String)(operation[1])));
-                    this.store = deserialize(storeBytes);
+                    byte[][] segments = disk.get(((String)(operation[1])));
+                    this.store = deserializeFromSegments(segments);
+                    break;
+                }
+                case "segment_count": {
+                    byte[][] segments = disk.get(((String)(operation[1])));
+                    outputs.add(segments.length);
+                    break;
+                }
+                case "reorder": {
+                    String path = (String)(operation[1]);
+                    byte[][] segments = disk.get(path);
+                    int[] order = (int[])(operation[2]);
+                    disk.put(path, reorder(segments, order));
+                    break;
                 }
             }
         }
         return outputs;
+    }
+
+    private byte[][] reorder(byte[][] segments, int[] order) {
+        if (order.length != segments.length) return segments;
+        byte[][] afterOrder = new byte[segments.length][];
+        for (int i = 0; i < segments.length; i++) {
+            afterOrder[i] = segments[order[i]];
+        }
+        return afterOrder;
     }
 
     private byte[][] serializeWithSegment(int maxSize) {
@@ -68,20 +106,38 @@ class Solution {
         int start = 0, end = start + segSize;
         for (int i = 0; i < count - 1; i++) {
             byte[] chunk = new byte[maxSize];
-            byte[] head = encodeLength(i);
+            byte[] head = encodeNum(i);
             System.arraycopy(head, 0, chunk, 0, 4);
-            System.arraycopy(allBytes, start, chunk, 4, segSize);
+            System.arraycopy(chunk, 4, allBytes, start, segSize);
             segments[i] = chunk;
             start += segSize;
         }
         // handle last chunk
         int lastChunkSize = allBytes.length - start;
         byte[] chunk = new byte[lastChunkSize];
-        byte[] head = encodeLength(count - 1);
+        byte[] head = encodeNum(count - 1);
         System.arraycopy(head, 0, chunk, 0, 4);
-        System.arraycopy(allBytes, start, chunk, 4, lastChunkSize);
+        System.arraycopy(chunk, 4, allBytes, start, lastChunkSize);
         segments[count - 1] = chunk;
         return segments;
+    }
+
+    private Map<DataItem, DataItem> deserializeFromSegments(byte[][] segments) {
+        int size = 0;
+        byte[][] ordered = new byte[segments.length][];
+        for (byte[] segment : segments) {
+            size += segment.length - 4;
+            int index = decodeNum(segment, 0);
+            ordered[index] = segment;
+        }
+        byte[] allBytes = new byte[size];
+        int start = 0;
+        for (byte[] segment : ordered) {
+            int length = segment.length - 4;
+            System.arraycopy(segment, 4, allBytes, start, length);
+            start += length;
+        }
+        return deserialize(allBytes);
     }
 
     private byte[] serialize() {
@@ -89,10 +145,10 @@ class Solution {
         int size = 0;
         for (Map.Entry<DataItem, DataItem> entry : store.entrySet()) {
             var key = entry.getKey().encodeToBytes();
-            chunks.add(encodeLength(key.length));
+            chunks.add(encodeNum(key.length));
             chunks.add(key);
             var val = entry.getValue().encodeToBytes();
-            chunks.add(encodeLength(val.length));
+            chunks.add(encodeNum(val.length));
             chunks.add(val);
             size += 8 + key.length + val.length;
         }
@@ -116,9 +172,7 @@ class Solution {
             start += 4;
             var key = DataItem.decodeFromBytes(storeBytes, start);
             start += keyLength;
-            for (int i = 0; i < 4; i++) {
-                valLength = (valLength << 8) | (storeBytes[start + i] & 0xFF);
-            }
+            valLength = decodeNum(storeBytes, start);
             start += 4;
             var val = DataItem.decodeFromBytes(storeBytes, start);
             start += valLength;
@@ -127,13 +181,21 @@ class Solution {
         return localstore;
     }
 
-    private byte[] encodeLength(int length) {
+    private byte[] encodeNum(int length) {
         byte[] res = new byte[4];
         res[0] = (byte)(length >>> 24);
         res[1] = (byte)(length >>> 16);
         res[2] = (byte)(length >>> 8);
         res[3] = (byte)(length);
         return res;
+    }
+
+    private int decodeNum(byte[] data, int start) {
+        int num = 0;
+        for (int i = start; i < start + 4; i++) {
+            num = (num << 8) | (data[i] & 0xFF);
+        }
+        return num;
     }
 }
 
