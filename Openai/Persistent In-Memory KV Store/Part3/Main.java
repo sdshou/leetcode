@@ -42,9 +42,9 @@ public class Main {
 
 class Solution {
     private Map<DataItem, DataItem> store = new HashMap<>();
-    private Map<String, byte[][]> disk = new HashMap<>();
-    public Object solution(Object max_segment_size, Object operations) {
-        int maxSize = (int)max_segment_size;
+    private DiskDataManager diskManager = new DiskDataManager();
+    public Object solution(Object compact_threshold, Object operations) {
+        int maxSize = (int)compact_threshold;
         var outputs = new LinkedList<Object>();
         if (!(operations instanceof Object[])) return outputs;
 
@@ -61,27 +61,29 @@ class Solution {
                     }
                     break;
                 }
-                case "put": store.put(new DataItem(operation[1]), new DataItem(operation[2])); break;
-                case "delete": store.remove(new DataItem(operation[1])); break;
-                case "serialize": {
-                    disk.put(((String)operation[1]), serializeWithSegment(maxSize));
+                case "put": {
+                    Operation putOp = new Operation(0, new DataItem(operation[1]), new DataItem(operation[2]));
+                    store.put(putOp.key, putOp.val);
+                    diskManager.appendLog(putOp.serialize());
+                    tryCompact();
                     break;
                 }
-                case "deserialize": {
+                case "delete": {
+                    Operation deleteOp = new Operation(0, new DataItem(operation[1]), null);
+                    store.remove(deleteOp.key);
+                    diskManager.appendLog(deleteOp.serialize());
+                    tryCompact();
+                    break;
+                }
+                case "restart": {
                     byte[][] segments = disk.get(((String)(operation[1])));
-                    this.store = deserializeFromSegments(segments);
+                    this.store = deserialize(diskManager.snapshot);
+                    replay(diskManager.logs);
                     break;
                 }
-                case "segment_count": {
-                    byte[][] segments = disk.get(((String)(operation[1])));
-                    outputs.add(segments.length);
-                    break;
-                }
-                case "reorder": {
-                    String path = (String)(operation[1]);
-                    byte[][] segments = disk.get(path);
-                    int[] order = (int[])(operation[2]);
-                    disk.put(path, reorder(segments, order));
+                case "status": {
+                    int[] status = new int[]{this.store.size(), diskManager.logs.size(), diskManager.compactionCount}
+                    outputs.add(status);
                     break;
                 }
             }
@@ -89,55 +91,9 @@ class Solution {
         return outputs;
     }
 
-    private byte[][] reorder(byte[][] segments, int[] order) {
-        if (order.length != segments.length) return segments;
-        byte[][] afterOrder = new byte[segments.length][];
-        for (int i = 0; i < segments.length; i++) {
-            afterOrder[i] = segments[order[i]];
-        }
-        return afterOrder;
-    }
-
-    private byte[][] serializeWithSegment(int maxSize) {
-        int segSize = maxSize - 4;
-        byte[] allBytes = serialize();
-        int count = (allBytes.length + segSize - 1) / segSize;
-        byte[][] segments = new byte[count][];
-        int start = 0, end = start + segSize;
-        for (int i = 0; i < count - 1; i++) {
-            byte[] chunk = new byte[maxSize];
-            byte[] head = encodeNum(i);
-            System.arraycopy(head, 0, chunk, 0, 4);
-            System.arraycopy(allBytes, start, chunk, 4, segSize);
-            segments[i] = chunk;
-            start += segSize;
-        }
-        // handle last chunk
-        int lastChunkSize = allBytes.length - start;
-        byte[] chunk = new byte[lastChunkSize + 4];
-        byte[] head = encodeNum(count - 1);
-        System.arraycopy(head, 0, chunk, 0, 4);
-        System.arraycopy(allBytes, start, chunk, 4, lastChunkSize);
-        segments[count - 1] = chunk;
-        return segments;
-    }
-
-    private Map<DataItem, DataItem> deserializeFromSegments(byte[][] segments) {
-        int size = 0;
-        byte[][] ordered = new byte[segments.length][];
-        for (byte[] segment : segments) {
-            size += segment.length - 4;
-            int index = decodeNum(segment, 0);
-            ordered[index] = segment;
-        }
-        byte[] allBytes = new byte[size];
-        int start = 0;
-        for (byte[] segment : ordered) {
-            int length = segment.length - 4;
-            System.arraycopy(segment, 4, allBytes, start, length);
-            start += length;
-        }
-        return deserialize(allBytes);
+    private void tryCompact() {
+        if (!diskManager.shouldCompact()) return;
+        diskManager.compact(this.serialize());
     }
 
     private byte[] serialize() {
@@ -166,9 +122,7 @@ class Solution {
         Map<DataItem, DataItem> localstore = new HashMap<>();
         while (start < storeBytes.length) {
             int keyLength = 0, valLength = 0;
-            for (int i = 0; i < 4; i++) {
-                keyLength = (keyLength << 8) | (storeBytes[start + i] & 0xFF);
-            }
+            keyLength = decodeNum(storeBytes, start);
             start += 4;
             var key = DataItem.decodeFromBytes(storeBytes, start);
             start += keyLength;
@@ -179,6 +133,17 @@ class Solution {
             localstore.put(key, val);
         }
         return localstore;
+    }
+
+    private void replay(List<byte[]> logs) {
+        for (byte[] log : logs) {
+            Operation op = Operation.deserialize(log);
+            if (op.op == 0) {
+                this.store.put(op.key, op.val);
+            } else if (op.op == 1) {
+                this.store.remove(op.key);
+            }
+        }
     }
 
     private byte[] encodeNum(int length) {
@@ -196,6 +161,66 @@ class Solution {
             num = (num << 8) | (data[i] & 0xFF);
         }
         return num;
+    }
+}
+
+class DiskDataManager {
+    int compactionCount;
+    byte[] snapshot;
+    List<byte[]> logs;
+
+    public DiskDataManager() {
+        this.compactionCount = 0;
+        this.snapshot = null;
+        this.logs = new ArrayList<>();
+    }
+
+    public void appendLog(byte[] log) {
+        this.logs.add(log);
+    }
+
+    public void shouldCompact(int compactThreshold) {
+        return logs.size() >= compactThreshold;
+    }
+
+    public void compact(byte[] snapshot) {
+        this.compactionCount++;
+        this.snapshot = snapshot;
+        this.logs.clear();
+    }
+}
+
+class Operation {
+    int op; // 0: put, 1: delete
+    DataItem key;
+    DataItem val;
+
+    public Operation(int op, DataItem key, DataItem val) {
+        this.op = op;
+        this.key = key;
+        this.val = val;
+    }
+
+    public byte[] serialize() {
+        // byte[op, key, val]
+        var keyBytes = this.key.encodeToBytes();
+        var valBytes = this.val.encodeToBytes();
+        byte[] res = new byte[1 + keyBytes.length + valBytes.length];
+        res[0] = op & 0xFF;
+        system.arraycopy(keyBytes, 0, res, 1, keyBytes.length);
+        system.arraycopy(valBytes, 0, res, 1 + keyBytes.length, valBytes.length);
+        return res;
+    }
+
+    public static Operation deserialize(byte[] log) {
+        int op = (int)(log[0]);
+        int length = 0;
+        for (int i = 1; i < 5; i++) {
+            length = (length << 8) | (log[i] & 0xFF);
+        }
+        var key = DataItem.decodeFromBytes(log, 1);
+        var val = DataItem.decodeFromBytes(log, 5 + length);
+        return new Operation(op, key, val);
     }
 }
 
