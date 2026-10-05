@@ -17,7 +17,9 @@ public class Main {
             {"put", key, val}, {"serialize", "p"}, {"delete", key},
             {"get", key}, {"deserialize", "p"}, {"get", key}
         };
-        res = solution.solution(operations2);
+        
+        Solution solution2 = new Solution();
+        res = solution2.solution(operations2);
         if (res instanceof List<?> r) {
             byte[] v1 = (byte[]) r.get(1);
             var str = String.format("[%s, %s]", r.get(0), new String(v1, StandardCharsets.UTF_8));

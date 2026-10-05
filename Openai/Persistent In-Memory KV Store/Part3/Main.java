@@ -4,39 +4,36 @@ import java.util.*;
 public class Main {
     public static void main(String[] args) {
         Solution solution = new Solution();
-        byte[] key1 = "a".getBytes(StandardCharsets.UTF_8);
-        byte[] key2 = "b".getBytes(StandardCharsets.UTF_8);
         Object[][] operations = new Object[][]{
-            {"put", key1, "12345".getBytes(StandardCharsets.UTF_8)}, 
-            {"put", key2, "67890".getBytes(StandardCharsets.UTF_8)}, 
-            {"serialize", "p"}, {"segment_count", "p"}, {"delete", key1}, 
-            {"deserialize", "p"}, {"get", key1}, {"get", key2}
+            {"put", "a", "1"}, 
+            {"put", "b", "2"}, 
+            {"restart"}, {"get", "a"}, {"get", "b"}, {"status"}
         };
-        var res = solution.solution(15, operations);
+        var res = solution.solution(3, operations);
         if (res instanceof List<?> r) {
-            byte[] v1 = (byte[]) r.get(1);
-            byte[] v2 = (byte[]) r.get(2);
-            var str = String.format("[%d, %s, %s]", r.get(0), new String(v1, StandardCharsets.UTF_8), new String(v2, StandardCharsets.UTF_8));
+            var str = String.format("[%s, %s, %s]", r.get(0), r.get(1), statusToString(r.get(2)));
             System.out.println(str);
         }
 
-        key1 = "aa".getBytes(StandardCharsets.UTF_8);
-        key2 = "bb".getBytes(StandardCharsets.UTF_8);
-        byte[] val1 = "xx".getBytes(StandardCharsets.UTF_8);
-        byte[] val2 = "yy".getBytes(StandardCharsets.UTF_8);
         var operations2 = new Object[][]{
-            {"put", key1, val1}, {"put", key2, val2}, {"serialize", "snap"}, 
-            {"segment_count", "snap"}, {"reorder", "snap", new int[]{2, 0, 1}}, 
-            {"delete", key2}, {"deserialize", "snap"}, 
-            {"get", key1}, {"get", key2}
+            {"put", "x", "1"}, {"status"}, {"put", "y", "2"}, {"status"},
+            {"restart"}, {"get", "x"}, {"get", "y"}, {"status"}
         };
-        res = solution.solution(20, operations2);
+
+        Solution solution2 = new Solution();
+        res = solution2.solution(2, operations2);
         if (res instanceof List<?> r) {
-            byte[] v1 = (byte[]) r.get(1);
-            byte[] v2 = (byte[]) r.get(2);
-            var str = String.format("[%d, %s, %s]", r.get(0), new String(v1, StandardCharsets.UTF_8), new String(v2, StandardCharsets.UTF_8));
+            var str = String.format("[%s, %s, %s, %s, %s]", statusToString(r.get(0)), statusToString(r.get(1)), r.get(2), r.get(3), statusToString(r.get(4)));
             System.out.println(str);
-        } // [None, v:1]
+        } // 
+    }
+
+    private static String statusToString(Object obj) {
+        if (obj instanceof int[]) {
+            int[] status = (int[])(obj);
+            return Arrays.toString(status);
+        }
+        return "";
     }
 }
 
@@ -65,24 +62,23 @@ class Solution {
                     Operation putOp = new Operation(0, new DataItem(operation[1]), new DataItem(operation[2]));
                     store.put(putOp.key, putOp.val);
                     diskManager.appendLog(putOp.serialize());
-                    tryCompact();
+                    tryCompact(maxSize);
                     break;
                 }
                 case "delete": {
-                    Operation deleteOp = new Operation(0, new DataItem(operation[1]), null);
+                    Operation deleteOp = new Operation(1, new DataItem(operation[1]), null);
                     store.remove(deleteOp.key);
                     diskManager.appendLog(deleteOp.serialize());
-                    tryCompact();
+                    tryCompact(maxSize);
                     break;
                 }
                 case "restart": {
-                    byte[][] segments = disk.get(((String)(operation[1])));
                     this.store = deserialize(diskManager.snapshot);
                     replay(diskManager.logs);
                     break;
                 }
                 case "status": {
-                    int[] status = new int[]{this.store.size(), diskManager.logs.size(), diskManager.compactionCount}
+                    int[] status = new int[]{this.store.size(), diskManager.logs.size(), diskManager.compactionCount};
                     outputs.add(status);
                     break;
                 }
@@ -91,8 +87,8 @@ class Solution {
         return outputs;
     }
 
-    private void tryCompact() {
-        if (!diskManager.shouldCompact()) return;
+    private void tryCompact(int compactThreshold) {
+        if (!diskManager.shouldCompact(compactThreshold)) return;
         diskManager.compact(this.serialize());
     }
 
@@ -118,8 +114,9 @@ class Solution {
     }
 
     private Map<DataItem, DataItem> deserialize(byte[] storeBytes) {
-        int start = 0;
         Map<DataItem, DataItem> localstore = new HashMap<>();
+        if (storeBytes == null) return localstore;
+        int start = 0;
         while (start < storeBytes.length) {
             int keyLength = 0, valLength = 0;
             keyLength = decodeNum(storeBytes, start);
@@ -179,7 +176,7 @@ class DiskDataManager {
         this.logs.add(log);
     }
 
-    public void shouldCompact(int compactThreshold) {
+    public boolean shouldCompact(int compactThreshold) {
         return logs.size() >= compactThreshold;
     }
 
@@ -206,20 +203,20 @@ class Operation {
         var keyBytes = this.key.encodeToBytes();
         var valBytes = this.val.encodeToBytes();
         byte[] res = new byte[1 + keyBytes.length + valBytes.length];
-        res[0] = op & 0xFF;
-        system.arraycopy(keyBytes, 0, res, 1, keyBytes.length);
-        system.arraycopy(valBytes, 0, res, 1 + keyBytes.length, valBytes.length);
+        res[0] = (byte)op;
+        System.arraycopy(keyBytes, 0, res, 1, keyBytes.length);
+        System.arraycopy(valBytes, 0, res, 1 + keyBytes.length, valBytes.length);
         return res;
     }
 
     public static Operation deserialize(byte[] log) {
         int op = (int)(log[0]);
         int length = 0;
-        for (int i = 1; i < 5; i++) {
+        for (int i = 2; i < 6; i++) {
             length = (length << 8) | (log[i] & 0xFF);
         }
         var key = DataItem.decodeFromBytes(log, 1);
-        var val = DataItem.decodeFromBytes(log, 5 + length);
+        var val = DataItem.decodeFromBytes(log, 6 + length);
         return new Operation(op, key, val);
     }
 }

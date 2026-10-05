@@ -30,7 +30,8 @@ public class Main {
             {"delete", key2}, {"deserialize", "snap"}, 
             {"get", key1}, {"get", key2}
         };
-        res = solution.solution(20, operations2);
+        Solution solution2 = new Solution();
+        res = solution2.solution(20, operations2);
         if (res instanceof List<?> r) {
             byte[] v1 = (byte[]) r.get(1);
             byte[] v2 = (byte[]) r.get(2);
