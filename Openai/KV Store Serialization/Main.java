@@ -11,15 +11,7 @@ public class Main {
         Solution solution = new Solution();
         var res = solution.solution("encode", new HashMap<String, Object>());
         byte[] bytesData = (byte[])res;
-        StringBuilder sb = new StringBuilder();
-        for (byte b : bytesData) {
-            if (b <= 126 && b >= 33) {
-                sb.append((char)b);
-            } else {
-                sb.append("\\x").append(hex.toHexDigits(b));
-            }
-        }
-        System.out.println(sb.toString()); // KVSB\x01\x04\x00\x00\x00\x00\x00\x00\x00;\x01\x00\x00
+        System.out.println(formatBytes(bytesData)); // KVSB\x01\x04\x00\x00\x00\x00\x00\x00\x00;\x01\x00\x00
         System.out.println(new String(bytesData, 0, 4, StandardCharsets.UTF_8) + hex.formatHex(bytesData, 4, bytesData.length)); // 
         // KVSB\x01\x04\x00\x00\x00\x00\x00\x00\x00\x3b\x01\x00\x00
 
@@ -43,25 +35,47 @@ public class Main {
         map.put("deposit", 87655637282.76D); // doubleToLongBits: 4770553005602947727L, byte[]: \x8f\xc2"\xe1\xaeh4B
         var res1 = solution.solution("encode", map);
         byte[] bytesData1 = (byte[])res1;
-        StringBuilder sb1 = new StringBuilder();
-        for (byte b : bytesData1) {
-            if (b <= 126 && b >= 33) {
-                sb1.append((char)b);
-            } else {
-                sb1.append("\\x").append(hex.toHexDigits(b));
-            }
-        }
-        System.out.println(sb1.toString());
+        System.out.println(formatBytes(bytesData1));
+
         res1 = solution.solution("decode", bytesData1);
         System.out.println("map: " + res1);
-        map = (Map<String, Object>) res1;
-        System.out.printf("deposit: %.2fD%n", map.get("deposit")); // deposit: 87655637282.76D
-        educationMap = (Map<String, Object>)(map.get("education"));
-        System.out.printf("education::tuitionFee: %.2fD%n", educationMap.get("tuitionFee")); // education::tuitionFee: 12042.76D
+        @SuppressWarnings("unchecked") // decode() builds Map<String, Object>, so the cast is safe
+        Map<String, Object> decodedMap = (Map<String, Object>) res1;
+        System.out.printf("deposit: %.2fD%n", decodedMap.get("deposit")); // deposit: 87655637282.76D
+        @SuppressWarnings("unchecked") // tag-5 values decode to Map<String, Object>
+        Map<String, Object> decodedEducation = (Map<String, Object>) (decodedMap.get("education"));
+        System.out.printf("education::tuitionFee: %.2fD%n", decodedEducation.get("tuitionFee")); // education::tuitionFee: 12042.76D
+
+        System.out.println("-------------test case 4-------------");
+
+        // test case 4
+        Map<String, Object> submap4 = new HashMap<>();
+        submap4.put("a", -2L);
+        Map<String, Object> map4 = new HashMap<>();
+        map4.put("m", submap4);
+        var res4 = solution.solution("encode", map4);
+        byte[] bytesData4 = (byte[])res4;
+        System.out.println(formatBytes(bytesData4));
+        // KVSB\x01\x24\x00\x00\x00\x01\x00\x00\x00\x01\x00\x00\x00m\x05\x16\x00\x00\x00\x01\x00\x00\x00\x01\x00\x00\x00a\x01\x08\x00\x00\x00\xfe\xff\xff\xff\xff\xff\xff\xffH\x0a\x00\x00
+        res4 = solution.solution("decode", bytesData4);
+        System.out.println("map: " + res4);
+    }
+
+    private static String formatBytes(byte[] data) {
+        HexFormat hex = HexFormat.of().withPrefix("\\x");
+        StringBuilder sb = new StringBuilder();
+        for (byte b : data) {
+            if (b <= 126 && b >= 48) {
+                sb.append((char)b);
+            } else {
+                sb.append("\\x").append(hex.toHexDigits(b));
+            }
+        }
+        return sb.toString();
     }
 }
 
-public class Solution {
+class Solution {
     // `data` and the return value are genuinely heterogeneous: which type occupies
     // each slot is decided by `operation`, so neither can be narrowed past Object.
     //   solution("encode", Map<String,Object> store) -> String  (the serialized buffer)
@@ -70,6 +84,7 @@ public class Solution {
     // the harness marshals Python `bytes` that way; it is NOT UTF-8 text.
     // Store values are Long (tag 1) | Double (tag 2) | Boolean (tag 3) | String (tag 4)
     // | Map<String,Object> (tag 5, nested).
+    @SuppressWarnings("unchecked")
     public Object solution(String operation, Object data) {
         if ("encode".equals(operation)) {
             if (data instanceof Map<?, ?> m) {
@@ -100,6 +115,7 @@ public class Solution {
         return res;
     }
 
+    @SuppressWarnings("unchecked")
     private byte[] encodeMapPayload(Map<String, Object> store) {
         List<byte[]> res = new ArrayList<>();
         int count = store.size();
