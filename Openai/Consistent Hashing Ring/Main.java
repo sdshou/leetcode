@@ -4,7 +4,17 @@ import java.util.*;
 
 public class Main {
     public static void main(String[] args) {
-        
+        Solution solution = new Solution();
+        List<String> operations = List.of("ShardRing", "get_shard");
+        List<List<Object>> dataArgs = List.of(List.of(3), List.of("anykey"));
+        List<String> res = solution.solution(operations, dataArgs);
+        System.out.println(res);
+
+        Solution solution1 = new Solution();
+        List<String> operations1 = List.of("ShardRing", "add_shard", "get_shard", "get_shard", "get_shard");
+        List<List<Object>> dataArgs1 = List.of(List.of(5), List.of("A"), List.of("k1"), List.of("k2"), List.of("user:42"));
+        List<String> res1 = solution1.solution(operations1, dataArgs1);
+        System.out.println(res1);
     }
 }
 
@@ -20,19 +30,39 @@ class Solution {
 
     class ShardRing {
         int vnodes;
+        TreeMap<Long, String> ring;
+
         ShardRing(int vnodes) {
             this.vnodes = vnodes;
-            // TODO: keep virtual-node positions sorted for O(log V) lookup
+            // keep virtual-node positions sorted for O(log V) lookup
+            this.ring = new TreeMap<>();
         }
+
+        // place vnodes virtual nodes at fnv1a32(shardId + "#" + i)
         void addShard(String shardId) {
-            // TODO: place vnodes virtual nodes at fnv1a32(shardId + "#" + i)
+            for (int i = 0; i < this.vnodes; i++) {
+                long idx = Solution.fnv1a32(String.format("%s#%d", shardId, i));
+                this.ring.put(idx, shardId);
+            }
         }
+
+        // drop every virtual node belonging to shardId
         void removeShard(String shardId) {
-            // TODO: drop every virtual node belonging to shardId
+            for (int i = 0; i < this.vnodes; i++) {
+                long idx = Solution.fnv1a32(String.format("%s#%d", shardId, i));
+                this.ring.remove(idx);
+            }
         }
+
+        // first virtual node clockwise from fnv1a32(key); "" if empty
         String getShard(String key) {
-            // TODO: first virtual node clockwise from fnv1a32(key); "" if empty
-            return "";
+            if (this.ring.isEmpty()) return "";
+            long idx = Solution.fnv1a32(key);
+            Long shardKey = this.ring.ceilingKey(idx);
+            if (shardKey == null) {
+                shardKey = this.ring.ceilingKey(0L);
+            }
+            return this.ring.get(shardKey);
         }
     }
 

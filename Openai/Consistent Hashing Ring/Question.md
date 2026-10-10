@@ -1,6 +1,6 @@
 # **Consistent Hashing Ring with Virtual Nodes for Shard Rebalancing**
 
-`hard`
+`hard` (actually not that hard)
 
 ## Source
 
@@ -13,7 +13,6 @@ Implement a consistent hashing ring with virtual nodes over the integer interval
 Support these methods:
 
 - `"ShardRing"` with args [vnodes]: create an empty ring where every shard contributes exactly `vnodes` virtual nodes (1 <= vnodes <= 1000). Return `None`.
-
 - `"add_shard"` with args [shard_id]: add a shard; its virtual node i sits at fnv1a_32(shard_id + "#" + str(i)) for i in 0..vnodes-1. Return `None`.
 - `"remove_shard"` with args [shard_id]: remove the shard and all of its virtual nodes. Return `None`.
 - `"get_shard"` with args [key]: return the owning shard id, i.e. the first virtual node clockwise (increasing position) starting at `fnv1a_32(key)`; if the key hash exceeds every position, wrap to the smallest position. Return `""` if the ring has no shards.
@@ -52,7 +51,10 @@ Notes:
 With only shard A on the ring, every key routes clockwise to one of A's 5 virtual nodes, so all keys are owned by A.
 ```
 
+
+
 ### **Constraints**
+
 - 1 <= vnodes <= 1000 (fixed for the ring's lifetime)
 - Up to 10^5 total operations across add_shard, remove_shard, get_shard
 - shard_id and key are non-empty ASCII strings up to 64 characters
